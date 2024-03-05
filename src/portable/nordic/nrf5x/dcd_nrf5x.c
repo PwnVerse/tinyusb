@@ -103,7 +103,7 @@ static struct
   xfer_td_t xfer[EP_CBI_COUNT + 1][2];
 
   // nRF can only carry one DMA at a time, this is used to guard the access to EasyDMA
-  atomic_bool dma_running;
+  atomic_flag dma_running;
 }_dcd;
 
 /*------------------------------------------------------------------*/
@@ -160,7 +160,7 @@ static void edpt_dma_start(volatile uint32_t* reg_startep)
 // DMA is complete
 static void edpt_dma_end(void)
 {
-  TU_ASSERT(_dcd.dma_running, );
+  // TU_ASSERT(_dcd.dma_running, );
   atomic_flag_clear(&_dcd.dma_running);
 }
 
@@ -620,6 +620,7 @@ void dcd_int_handler(uint8_t rhport)
   {
     if ( tu_bit_test(inten, i) && regevt[i]  )
     {
+      puts("dcd_int_handler : tu_bit_test(inten, i) && regevt[i]");
       int_status |= TU_BIT(i);
 
       // event clear
@@ -630,6 +631,7 @@ void dcd_int_handler(uint8_t rhport)
 
   if ( int_status & USBD_INTEN_USBRESET_Msk )
   {
+    puts("dcd_int_handler : int_status & USBD_INTEN_USBRESET_Msk");
     bus_reset();
     dcd_event_bus_reset(0, TUSB_SPEED_FULL, true);
   }
@@ -637,6 +639,7 @@ void dcd_int_handler(uint8_t rhport)
   // ISOIN: Data was moved to endpoint buffer, client will be notified in SOF
   if ( int_status & USBD_INTEN_ENDISOIN_Msk )
   {
+    puts("dcd_int_handler : int_status & USBD_INTEN_ENDISOIN_Msk");
     xfer_td_t* xfer = get_td(EP_ISO_NUM, TUSB_DIR_IN);
 
     xfer->actual_len = NRF_USBD->ISOIN.AMOUNT;
@@ -648,14 +651,17 @@ void dcd_int_handler(uint8_t rhport)
   if ( int_status & USBD_INTEN_SOF_Msk )
   {
     bool iso_enabled = false;
+    puts("dcd_int_handler : int_status & USBD_INTEN_SOF_Msk");
 
     // ISOOUT: Transfer data gathered in previous frame from buffer to RAM
     if (NRF_USBD->EPOUTEN & USBD_EPOUTEN_ISOOUT_Msk)
     {
+      puts("dcd_int_handler : NRF_USBD->EPOUTEN & USBD_EPOUTEN_ISOOUT_Msk");
       iso_enabled = true;
       // Transfer from endpoint to RAM only if data is not corrupted
       if ((int_status & USBD_INTEN_USBEVENT_Msk) == 0 ||
           (NRF_USBD->EVENTCAUSE & USBD_EVENTCAUSE_ISOOUTCRC_Msk) == 0) {
+        puts("dcd_int_handler : (int_status & USBD_INTEN_USBEVENT_Msk) == 0 || (NRF_USBD->EVENTCAUSE & USBD_EVENTCAUSE_ISOOUTCRC_Msk) == 0");
         xact_out_dma(EP_ISO_NUM);
       }
     }
@@ -664,10 +670,11 @@ void dcd_int_handler(uint8_t rhport)
     if (NRF_USBD->EPINEN & USBD_EPINEN_ISOIN_Msk)
     {
       iso_enabled = true;
-
+      puts("dcd_int_handler : NRF_USBD->EPINEN & USBD_EPINEN_ISOIN_Msk");
       xfer_td_t* xfer = get_td(EP_ISO_NUM, TUSB_DIR_IN);
       if ( xfer->iso_in_transfer_ready )
       {
+        puts("dcd_int_handler : xfer->iso_in_transfer_ready");
         xfer->iso_in_transfer_ready = false;
         dcd_event_xfer_complete(0, EP_ISO_NUM | TUSB_DIR_IN_MASK, xfer->actual_len, XFER_RESULT_SUCCESS, true);
       }
@@ -677,6 +684,7 @@ void dcd_int_handler(uint8_t rhport)
     {
       // ISO endpoint is not used, SOF is only enabled one-time for remote wakeup
       // so we disable it now
+      puts("dcd_int_handler : !iso_enabled");
       NRF_USBD->INTENCLR = USBD_INTENSET_SOF_Msk;
     }
 
@@ -685,6 +693,7 @@ void dcd_int_handler(uint8_t rhport)
 
   if ( int_status & USBD_INTEN_USBEVENT_Msk )
   {
+    puts("dcd_int_handler : int_status & USBD_INTEN_USBEVENT_Msk");
     TU_LOG(2, "EVENTCAUSE = 0x%04lX\r\n", NRF_USBD->EVENTCAUSE);
 
     enum { EVT_CAUSE_MASK = USBD_EVENTCAUSE_SUSPEND_Msk | USBD_EVENTCAUSE_RESUME_Msk | USBD_EVENTCAUSE_USBWUALLOWED_Msk | USBD_EVENTCAUSE_ISOOUTCRC_Msk };
@@ -693,6 +702,7 @@ void dcd_int_handler(uint8_t rhport)
 
     if ( evt_cause & USBD_EVENTCAUSE_SUSPEND_Msk )
     {
+      puts("dcd_int_handler : evt_cause & USBD_EVENTCAUSE_SUSPEND_Msk");
       // Put controller into low power mode
       // Leave HFXO disable to application, since it may be used by other peripherals
       NRF_USBD->LOWPOWER = 1;
@@ -702,6 +712,7 @@ void dcd_int_handler(uint8_t rhport)
 
     if ( evt_cause & USBD_EVENTCAUSE_USBWUALLOWED_Msk )
     {
+      puts("dcd_int_handler : evt_cause & USBD_EVENTCAUSE_USBWUALLOWED_Msk");
       // USB is out of low power mode, and wakeup is allowed
       // Initiate RESUME signal
       NRF_USBD->DPDMVALUE = USBD_DPDMVALUE_STATE_Resume;
@@ -715,6 +726,7 @@ void dcd_int_handler(uint8_t rhport)
 
     if ( evt_cause & USBD_EVENTCAUSE_RESUME_Msk )
     {
+      puts("dcd_int_handler : evt_cause & USBD_EVENTCAUSE_RESUME_Msk");
       dcd_event_bus_signal(0, DCD_EVENT_RESUME, true);
     }
   }
@@ -722,6 +734,7 @@ void dcd_int_handler(uint8_t rhport)
   // Setup tokens are specific to the Control endpoint.
   if ( int_status & USBD_INTEN_EP0SETUP_Msk )
   {
+    puts("dcd_int_handler : int_status & USBD_INTEN_EP0SETUP_Msk");
     uint8_t const setup[8] =
     {
       NRF_USBD->BMREQUESTTYPE , NRF_USBD->BREQUEST, NRF_USBD->WVALUEL , NRF_USBD->WVALUEH,
@@ -735,6 +748,7 @@ void dcd_int_handler(uint8_t rhport)
            TUSB_REQ_TYPE_STANDARD == request->bmRequestType_bit.type &&
            TUSB_REQ_SET_ADDRESS   == request->bRequest) )
     {
+      puts("dcd_int_handler : GETTING INTO dcd_event_setup_received");
       dcd_event_setup_received(0, setup, true);
     }
   }
@@ -743,6 +757,7 @@ void dcd_int_handler(uint8_t rhport)
   {
     // DMA complete move data from SRAM <-> Endpoint
     // Must before endpoint transfer handling
+    puts("dcd_int_handler : int_status & EDPT_END_ALL_MASK");
     edpt_dma_end();
   }
 
@@ -786,6 +801,7 @@ void dcd_int_handler(uint8_t rhport)
   {
     if ( tu_bit_test(int_status, USBD_INTEN_ENDEPOUT0_Pos+epnum))
     {
+      puts("dcd_int_handler : tu_bit_test(int_status, USBD_INTEN_ENDEPOUT0_Pos+epnum)");
       xfer_td_t* xfer = get_td(epnum, TUSB_DIR_OUT);
       uint16_t const xact_len = NRF_USBD->EPOUT[epnum].AMOUNT;
 
@@ -795,8 +811,10 @@ void dcd_int_handler(uint8_t rhport)
       // Transfer complete if transaction len < Max Packet Size or total len is transferred
       if ( (epnum != EP_ISO_NUM) && (xact_len == xfer->mps) && (xfer->actual_len < xfer->total_len) )
       {
+        puts("dcd_int_handler : Transfer complete if transaction len < Max Packet Size or total len is transferred");
         if ( epnum == 0 )
         {
+          puts("dcd_int_handler : epnum == 0");
           // Accept next Control Out packet. TASKS_EP0RCVOUT also require EasyDMA
           edpt_dma_start(&NRF_USBD->TASKS_EP0RCVOUT);
         }else
@@ -806,6 +824,7 @@ void dcd_int_handler(uint8_t rhport)
         }
       }else
       {
+        puts("dcd_int_handler : else");
         TU_ASSERT(xfer->started,);
         xfer->total_len = xfer->actual_len;
         xfer->started = false;
@@ -821,6 +840,7 @@ void dcd_int_handler(uint8_t rhport)
   // Endpoint <-> Host ( In & OUT )
   if ( int_status & (USBD_INTEN_EPDATA_Msk | USBD_INTEN_EP0DATADONE_Msk) )
   {
+    puts("dcd_int_handler : int_status & (USBD_INTEN_EPDATA_Msk | USBD_INTEN_EP0DATADONE_Msk)");
     uint32_t data_status = NRF_USBD->EPDATASTATUS;
     NRF_USBD->EPDATASTATUS = data_status;
     __ISB(); __DSB();
@@ -836,6 +856,7 @@ void dcd_int_handler(uint8_t rhport)
     {
       if ( tu_bit_test(data_status, epnum) || (epnum == 0 && is_control_in) )
       {
+        puts("dcd_int_handler : tu_bit_test(data_status, epnum) || (epnum == 0 && is_control_in)");
         xfer_td_t* xfer = get_td(epnum, TUSB_DIR_IN);
         uint8_t const xact_len = NRF_USBD->EPIN[epnum].AMOUNT;
 
@@ -844,10 +865,12 @@ void dcd_int_handler(uint8_t rhport)
 
         if ( xfer->actual_len < xfer->total_len )
         {
+          puts("dcd_int_handler : xfer->actual_len < xfer->total_len");
           // Start DMA to copy next data packet
           xact_in_dma(epnum);
         } else
         {
+          puts("dcd_int_handler : Call dcd_event_xfer_complete");
           // CBI IN complete
           dcd_event_xfer_complete(0, epnum | TUSB_DIR_IN_MASK, xfer->actual_len, XFER_RESULT_SUCCESS, true);
         }
@@ -859,13 +882,16 @@ void dcd_int_handler(uint8_t rhport)
     {
       if ( tu_bit_test(data_status, 16+epnum) || (epnum == 0 && is_control_out) )
       {
+        puts("dcd_int_handler : tu_bit_test(data_status, 16+epnum) || (epnum == 0 && is_control_out)");
         xfer_td_t* xfer = get_td(epnum, TUSB_DIR_OUT);
 
         if ( xfer->started && xfer->actual_len < xfer->total_len )
         {
+          puts("dcd_int_handler : xfer->started && xfer->actual_len < xfer->total_len");
           xact_out_dma(epnum);
         }else
         {
+          puts("dcd_int_handler : Call dcd_event_xfer_complete");
           // Data overflow !!! Nah, nRF will auto accept next Bulk/Interrupt OUT packet
           // Mark this endpoint with data received
           xfer->data_received = true;

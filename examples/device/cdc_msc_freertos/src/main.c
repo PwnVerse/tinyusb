@@ -87,6 +87,7 @@ static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 static void usb_device_task(void *param);
 void led_blinking_task(void* param);
 void cdc_task(void *params);
+void usb_interrupt_task(void *params);
 
 //--------------------------------------------------------------------+
 // Main
@@ -110,6 +111,8 @@ int main(void) {
   xTaskCreate(cdc_task, "cdc", CDC_STACK_SZIE, NULL, configMAX_PRIORITIES - 2, NULL);
 #endif
 
+  // Create an interrupt triggering task
+  xTaskCreate(usb_interrupt_task, "usb_interrupt", USBD_STACK_SIZE, NULL, configMAX_PRIORITIES - 1, NULL);
   // skip starting scheduler (and return) for ESP32-S2 or ESP32-S3
 #if !TU_CHECK_MCU(OPT_MCU_ESP32S2, OPT_MCU_ESP32S3)
   vTaskStartScheduler();
@@ -140,11 +143,22 @@ static void usb_device_task(void *param) {
 
   // RTOS forever loop
   while (1) {
+    puts("usb_device_task : In while loop");
     // put this thread to waiting state until there is new events
     tud_task();
 
     // following code only run if tud_task() process at least 1 event
     tud_cdc_write_flush();
+  }
+}
+
+void usb_interrupt_task(void *params) {
+  (void) params;
+
+  while (1) {
+    puts("usb_interrupt_task : In while loop");
+    dcd_int_handler(0);
+    vTaskDelay(100);
   }
 }
 
@@ -190,18 +204,20 @@ void cdc_task(void *params) {
       // There are data available
       while (tud_cdc_available()) {
         uint8_t buf[64];
+        puts("cdc_task : In while loop");
 
         // read and echo back
         uint32_t count = tud_cdc_read(buf, sizeof(buf));
         (void) count;
-
+        puts("cdc_task : Read data from cdc");
         // Echo back
         // Note: Skip echo by commenting out write() and write_flush()
         // for throughput test e.g
         //    $ dd if=/dev/zero of=/dev/ttyACM0 count=10000
         tud_cdc_write(buf, count);
+        puts("cdc_task : Wrote data to cdc");
       }
-
+      // puts("cdc_task : Before tud_cdc_write_flush");
       tud_cdc_write_flush();
     }
 
@@ -240,7 +256,7 @@ void led_blinking_task(void* param) {
     // Blink every interval ms
     vTaskDelay(blink_interval_ms / portTICK_PERIOD_MS);
     start_ms += blink_interval_ms;
-
+    puts("led_blinking_task : In while loop");
     board_led_write(led_state);
     led_state = 1 - led_state; // toggle
   }

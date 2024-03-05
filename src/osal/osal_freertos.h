@@ -196,7 +196,6 @@ TU_ATTR_ALWAYS_INLINE static inline bool osal_queue_send(osal_queue_t qhdl, void
     // not needed after https://github.com/espressif/esp-idf/commit/c5fd79547ac9b7bae06fa660e9f814d18d3390b7 (IDF v5)
     if ( xHigherPriorityTaskWoken ) portYIELD_FROM_ISR();
 #else
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 #endif
 
     return res != 0;

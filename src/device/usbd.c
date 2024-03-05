@@ -1073,6 +1073,7 @@ TU_ATTR_FAST_FUNC void dcd_event_handler(dcd_event_t const* event, bool in_isr) 
   bool send = false;
   switch (event->event_id) {
     case DCD_EVENT_UNPLUGGED:
+      puts("dcd_event_handler: DCD_EVENT_UNPLUGGED");
       _usbd_dev.connected = 0;
       _usbd_dev.addressed = 0;
       _usbd_dev.cfg_num = 0;
@@ -1081,6 +1082,7 @@ TU_ATTR_FAST_FUNC void dcd_event_handler(dcd_event_t const* event, bool in_isr) 
       break;
 
     case DCD_EVENT_SUSPEND:
+      puts("dcd_event_handler: DCD_EVENT_SUSPEND");
       // NOTE: When plugging/unplugging device, the D+/D- state are unstable and
       // can accidentally meet the SUSPEND condition ( Bus Idle for 3ms ).
       // In addition, some MCUs such as SAMD or boards that haven no VBUS detection cannot distinguish
@@ -1093,6 +1095,7 @@ TU_ATTR_FAST_FUNC void dcd_event_handler(dcd_event_t const* event, bool in_isr) 
 
     case DCD_EVENT_RESUME:
       // skip event if not connected (especially required for SAMD)
+      puts("dcd_event_handler: DCD_EVENT_RESUME");
       if (_usbd_dev.connected) {
         _usbd_dev.suspended = 0;
         send = true;
@@ -1100,6 +1103,7 @@ TU_ATTR_FAST_FUNC void dcd_event_handler(dcd_event_t const* event, bool in_isr) 
       break;
 
     case DCD_EVENT_SOF:
+      puts("dcd_event_handler: DCD_EVENT_SOF");
       // Some MCUs after running dcd_remote_wakeup() does not have way to detect the end of remote wakeup
       // which last 1-15 ms. DCD can use SOF as a clear indicator that bus is back to operational
       if (_usbd_dev.suspended) {
@@ -1121,11 +1125,13 @@ TU_ATTR_FAST_FUNC void dcd_event_handler(dcd_event_t const* event, bool in_isr) 
       break;
 
     default:
+      puts("dcd_event_handler: default");
       send = true;
       break;
   }
 
   if (send) {
+    puts("dcd_event_handler: send");
     queue_event(event, in_isr);
   }
 }
